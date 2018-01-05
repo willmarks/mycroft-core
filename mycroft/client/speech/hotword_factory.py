@@ -109,6 +109,8 @@ class PocketsphinxHotWord(HotWordEngine):
 
 
 class PreciseHotword(HotWordEngine):
+    ACTIVATION_LEVEL = 6
+
     def __init__(self, key_phrase="hey mycroft", config=None, lang="en-us"):
         super(PreciseHotword, self).__init__(key_phrase, config, lang)
         self.update_freq = 24  # in hours
@@ -126,8 +128,7 @@ class PreciseHotword(HotWordEngine):
 
         args = [exe_file, model_path, '1024']
         self.proc = Popen(args, stdin=PIPE, stdout=PIPE)
-        self.has_found = False
-        self.cooldown = 20
+        self.act_level = -20
         t = Thread(target=self.check_stdout)
         t.daemon = True
         t.start()
@@ -201,19 +202,22 @@ class PreciseHotword(HotWordEngine):
     def check_stdout(self):
         while True:
             line = self.proc.stdout.readline()
-            if self.cooldown > 0:
-                self.cooldown -= 1
-                self.has_found = False
+            if self.act_level < 0:
+                self.act_level -= 1
                 continue
-            self.has_found = float(line) > 0.5
+            if float(line) > 0.5 or self.act_level < 0:
+                self.act_level += 1
+            elif 0 < self.act_level < self.ACTIVATION_LEVEL:
+                self.act_level -= 1
 
     def update(self, chunk):
         self.proc.stdin.write(chunk)
         self.proc.stdin.flush()
 
     def found_wake_word(self, frame_data):
-        if self.has_found and self.cooldown == 0:
-            self.cooldown = 20
+        LOG.debug('Activation level: ' + str(self.act_level))
+        if self.act_level >= self.ACTIVATION_LEVEL:
+            self.act_level = -20
             return True
         return False
 
